@@ -1,0 +1,169 @@
+"""Command-line interface for claudible."""
+
+import argparse
+import os
+import pty
+import select
+import subprocess
+import sys
+import time
+from typing import Optional
+
+from .audio import SoundEngine
+from .materials import get_material, get_random_material, list_materials, MATERIALS
+from .monitor import ActivityMonitor
+
+
+def run_pipe_mode(engine: SoundEngine, monitor: ActivityMonitor):
+    """Run in pipe mode, reading from stdin."""
+    engine.start()
+    monitor.start()
+
+    try:
+        while True:
+            data = sys.stdin.buffer.read(1024)
+            if not data:
+                break
+            monitor.process_chunk(data)
+            sys.stdout.buffer.write(data)
+            sys.stdout.buffer.flush()
+        # Let audio buffer drain
+        time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        monitor.stop()
+        engine.stop()
+
+
+def run_wrap_mode(command: str, engine: SoundEngine, monitor: ActivityMonitor):
+    """Run in wrap mode, spawning a PTY for the command."""
+    import shlex
+    import tty
+    import termios
+
+    engine.start()
+    monitor.start()
+
+    if ' ' in command:
+        args = shlex.split(command)
+    else:
+        args = [command]
+
+    master_fd, slave_fd = pty.openpty()
+
+    try:
+        process = subprocess.Popen(
+            args,
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            preexec_fn=os.setsid,
+        )
+        os.close(slave_fd)
+
+        old_settings = termios.tcgetattr(sys.stdin)
+        try:
+            tty.setraw(sys.stdin.fileno())
+
+            while process.poll() is None:
+                rlist, _, _ = select.select([sys.stdin, master_fd], [], [], 0.1)
+
+                for fd in rlist:
+                    if fd == sys.stdin:
+                        data = os.read(sys.stdin.fileno(), 1024)
+                        if data:
+                            os.write(master_fd, data)
+                    elif fd == master_fd:
+                        try:
+                            data = os.read(master_fd, 1024)
+                            if data:
+                                monitor.process_chunk(data)
+                                sys.stdout.buffer.write(data)
+                                sys.stdout.buffer.flush()
+                        except OSError:
+                            break
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        os.close(master_fd)
+        monitor.stop()
+        engine.stop()
+
+
+def main():
+    """Main entry point."""
+    parser = argparse.ArgumentParser(
+        prog='claudible',
+        description='Ambient audio soundscape feedback for terminal output',
+    )
+    parser.add_argument(
+        'command',
+        nargs='?',
+        default='claude',
+        help='Command to wrap (default: claude)',
+    )
+    parser.add_argument(
+        '--pipe',
+        action='store_true',
+        help='Pipe mode: read from stdin instead of wrapping a command',
+    )
+    parser.add_argument(
+        '--character', '-c',
+        choices=list_materials(),
+        help='Sound character (default: random)',
+    )
+    parser.add_argument(
+        '--volume', '-v',
+        type=float,
+        default=0.5,
+        help='Volume 0.0-1.0 (default: 0.5)',
+    )
+    parser.add_argument(
+        '--attention', '-a',
+        type=float,
+        default=30.0,
+        help='Seconds of silence before attention signal (default: 30)',
+    )
+    parser.add_argument(
+        '--list-characters',
+        action='store_true',
+        help='List available sound characters',
+    )
+
+    args = parser.parse_args()
+
+    if args.list_characters:
+        print("Available sound characters:\n")
+        for name, mat in MATERIALS.items():
+            print(f"  {name:10} - {mat.description}")
+        return
+
+    if args.character:
+        material = get_material(args.character)
+    else:
+        material = get_random_material()
+
+    volume = max(0.0, min(1.0, args.volume))
+
+    engine = SoundEngine(material=material, volume=volume)
+    monitor = ActivityMonitor(
+        on_grain=engine.play_grain,
+        on_chime=engine.play_chime,
+        on_attention=engine.play_attention,
+        attention_seconds=args.attention,
+    )
+
+    print(f"[claudible] {material.name} - {material.description}", file=sys.stderr)
+
+    if args.pipe:
+        run_pipe_mode(engine, monitor)
+    else:
+        run_wrap_mode(args.command, engine, monitor)
+
+
+if __name__ == '__main__':
+    main()
