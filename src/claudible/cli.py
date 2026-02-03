@@ -14,6 +14,24 @@ from .materials import get_material, get_random_material, list_materials, MATERI
 from .monitor import ActivityMonitor
 
 
+def run_demo(volume: float):
+    """Play a short demo of every sound character."""
+    print("Claudible character demo\n", file=sys.stderr)
+    for name, mat in MATERIALS.items():
+        print(f"  {name:10} - {mat.description}", file=sys.stderr)
+        engine = SoundEngine(material=mat, volume=volume)
+        engine.start()
+        # Play a burst of grains then a chime
+        for i in range(8):
+            engine.play_grain(chr(ord('a') + i))
+            time.sleep(0.06)
+        time.sleep(0.15)
+        engine.play_chime()
+        time.sleep(0.6)
+        engine.stop()
+    print("\nDone.", file=sys.stderr)
+
+
 def run_pipe_mode(engine: SoundEngine, monitor: ActivityMonitor):
     """Run in pipe mode, reading from stdin."""
     engine.start()
@@ -138,6 +156,11 @@ def main():
         action='store_true',
         help='List available sound characters',
     )
+    parser.add_argument(
+        '--demo',
+        action='store_true',
+        help='Play a short demo of each sound character',
+    )
 
     args = parser.parse_args()
 
@@ -145,6 +168,11 @@ def main():
         print("Available sound characters:\n")
         for name, mat in MATERIALS.items():
             print(f"  {name:10} - {mat.description}")
+        return
+
+    if args.demo:
+        volume = max(0.0, min(1.0, args.volume))
+        run_demo(volume)
         return
 
     if args.character:

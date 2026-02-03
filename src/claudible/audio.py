@@ -33,8 +33,8 @@ class SoundEngine:
         self._write_pos = 0
         self._read_pos = 0
 
-        # Pre-generate grain variations for efficiency
-        self._grain_cache = [self._generate_grain() for _ in range(8)]
+        # Pre-generate grains spread across registers for tonal variety
+        self._grain_cache = self._build_grain_cache()
         self._cache_index = 0
 
     def start(self):
@@ -141,77 +141,139 @@ class SoundEngine:
 
     # --- Sound generation ---
 
-    def _generate_grain(self) -> np.ndarray:
+    def _build_grain_cache(self) -> list:
+        """Build grain cache with voices at full-octave intervals, biased low + high."""
+        # Each register is a full octave apart.
+        # (octave_shift, noise_mult, decay_mult, duration_mult)
+        # Multiple character variations per register.
+        voices = [
+            # --- oct -3: sub rumble (3 voices) ---
+            (-3, 3.5, 2.5, 1.8),   # sub thump
+            (-3, 2.0, 3.0, 2.0),   # sub knock
+            (-3, 2.8, 2.0, 1.6),   # sub punch
+
+            # --- oct -2: deep (3 voices) ---
+            (-2, 2.8, 1.8, 1.5),   # deep percussive
+            (-2, 1.2, 2.0, 1.4),   # deep tonal
+            (-2, 2.0, 1.5, 1.3),   # deep knock
+
+            # --- oct -1: low (3 voices) ---
+            (-1, 1.8, 1.4, 1.2),   # low thump
+            (-1, 0.8, 1.2, 1.1),   # low warm
+            (-1, 1.4, 1.6, 1.2),   # low snap
+
+            # --- oct 0: mid (2 voices) ---
+            ( 0, 1.0, 1.0, 1.0),   # mid click
+            ( 0, 0.6, 0.8, 0.9),   # mid soft
+
+            # --- oct +1: high (3 voices) ---
+            ( 1, 0.5, 0.6, 0.7),   # high ping
+            ( 1, 0.8, 0.5, 0.7),   # high tick
+            ( 1, 0.3, 0.7, 0.8),   # high ring
+
+            # --- oct +2: bright (3 voices) ---
+            ( 2, 0.2, 0.4, 0.55),  # bright ting
+            ( 2, 0.5, 0.3, 0.6),   # bright click
+            ( 2, 0.15, 0.5, 0.5),  # bright shimmer
+
+            # --- oct +3: air (3 voices) ---
+            ( 3, 0.1, 0.25, 0.4),  # air sparkle
+            ( 3, 0.3, 0.2, 0.45),  # air tick
+            ( 3, 0.05, 0.3, 0.35), # air wisp
+        ]
+        cache = []
+        for octave, noise_m, decay_m, dur_m in voices:
+            cache.append(self._generate_grain(
+                octave_shift=octave,
+                noise_mult=noise_m,
+                decay_mult=decay_m,
+                duration_mult=dur_m,
+            ))
+        return cache
+
+    def _generate_grain(self, octave_shift: float = 0.0, noise_mult: float = 1.0,
+                        decay_mult: float = 1.0, duration_mult: float = 1.0) -> np.ndarray:
         """Generate a single grain sound from the material's physical model."""
         m = self.material
-        # Vary duration per grain
-        duration = m.grain_duration * np.random.uniform(0.85, 1.15)
+        duration = m.grain_duration * duration_mult * np.random.uniform(0.85, 1.15)
         n = int(duration * self.SAMPLE_RATE)
         t = np.linspace(0, duration, n, dtype=np.float32)
 
         grain = np.zeros(n, dtype=np.float32)
 
-        # Randomise base frequency within the material's spread
-        base_freq = m.base_freq * (2 ** (np.random.uniform(-m.freq_spread, m.freq_spread) / 12))
+        # Base frequency shifted by register
+        base_freq = m.base_freq * (2 ** octave_shift)
+        base_freq *= (2 ** (np.random.uniform(-m.freq_spread, m.freq_spread) / 12))
 
-        # Generate each partial with its own decay, detuning, and random phase
         for i, (ratio, amp) in enumerate(m.partials):
             detune_cents = np.random.uniform(-m.detune_amount, m.detune_amount)
             freq = base_freq * ratio * (2 ** (detune_cents / 1200))
-            # Extra micro-variation per partial
             freq *= np.random.uniform(0.997, 1.003)
             phase = np.random.uniform(0, 2 * np.pi)
 
             decay_rate = m.decay_rates[i] if i < len(m.decay_rates) else m.decay_rates[-1]
+            decay_rate *= decay_mult
             envelope = np.exp(-decay_rate * t)
 
             grain += amp * envelope * np.sin(2 * np.pi * freq * t + phase)
 
-        # Noise transient (the "tick" of physical impact)
+        # Noise transient — louder for low percussive grains
         if m.attack_noise > 0:
             noise = np.random.randn(n).astype(np.float32)
-            noise = self._highpass(noise, m.noise_freq)
-            # Shape: fast attack, very fast decay with micro-variation
-            noise_env = np.exp(-150 * t)
+            noise_cutoff = max(m.noise_freq * (0.5 if octave_shift < -0.5 else 1.0), 200)
+            noise = self._highpass(noise, noise_cutoff)
+            noise_env = np.exp(-150 * t / max(decay_mult, 0.5))
             noise_env *= np.clip(
                 1.0 + 0.3 * np.random.randn(n).astype(np.float32) * np.exp(-200 * t),
                 0, 1,
             )
-            grain += m.attack_noise * 0.3 * noise * noise_env
+            grain += m.attack_noise * noise_mult * 0.3 * noise * noise_env
 
         # Attack shaping
         attack_samples = max(int(m.attack_ms / 1000 * self.SAMPLE_RATE), 2)
         if attack_samples < n:
             grain[:attack_samples] *= np.linspace(0, 1, attack_samples, dtype=np.float32)
 
-        # Pitch drop envelope (physical: pitch drops as energy dissipates)
-        if m.pitch_drop != 1.0:
-            pitch_env = np.linspace(1.0, m.pitch_drop, n)
+        # Pitch drop — more dramatic for low grains
+        pitch_drop = m.pitch_drop if octave_shift >= 0 else m.pitch_drop ** (1.0 + abs(octave_shift) * 0.3)
+        if pitch_drop != 1.0:
+            pitch_env = np.linspace(1.0, pitch_drop, n)
             phase_mod = np.cumsum(pitch_env) / np.sum(pitch_env) * n
             indices = np.clip(phase_mod.astype(int), 0, n - 1)
             grain = grain[indices]
 
-        # Multi-tap reverb with HF damping
-        grain = self._apply_reverb(grain, m.reverb_amount, m.room_size, m.reverb_damping)
-
-        # Truncate reverb tail back to grain length
+        # Reverb — less for percussive lows (tighter), more for highs
+        reverb_amt = m.reverb_amount * (0.6 if octave_shift < -0.5 else 1.0 + max(octave_shift, 0) * 0.2)
+        grain = self._apply_reverb(grain, reverb_amt, m.room_size, m.reverb_damping)
         grain = grain[:n]
 
-        # Normalise with per-material volume
         peak = np.max(np.abs(grain))
         if peak > 0:
             grain = grain / peak * 0.4 * m.volume
 
         return grain.astype(np.float32)
 
-    def play_grain(self):
-        """Play a grain/sparkle sound."""
-        # Pick a random cached grain
-        idx = np.random.randint(len(self._grain_cache))
+    @staticmethod
+    def _token_hash(token: str) -> int:
+        """Deterministic hash from token content, stable across sessions."""
+        h = 5381
+        for c in token:
+            h = ((h * 33) ^ ord(c)) & 0xFFFFFFFF
+        return h
+
+    def play_grain(self, token: str = ""):
+        """Play a grain/sparkle sound, deterministic for a given token."""
+        if token:
+            h = self._token_hash(token)
+            rng = np.random.RandomState(h)
+        else:
+            rng = np.random
+
+        idx = rng.randint(len(self._grain_cache))
         grain = self._grain_cache[idx].copy()
 
-        # Per-play pitch variation via resampling (±4 semitones)
-        pitch_shift = 2 ** (np.random.uniform(-4, 4) / 12)
+        # Narrow pitch micro-variation (±1.5 semitones) — stays in its register
+        pitch_shift = 2 ** (rng.uniform(-1.5, 1.5) / 12)
         if abs(pitch_shift - 1.0) > 0.001:
             new_len = int(len(grain) / pitch_shift)
             if new_len > 0:
@@ -221,12 +283,7 @@ class SoundEngine:
                     grain,
                 ).astype(np.float32)
 
-        # Random amplitude variation
-        grain *= np.random.uniform(0.6, 1.0)
-
-        # Regenerate cached grains aggressively for variety
-        if np.random.random() < 0.5:
-            self._grain_cache[np.random.randint(len(self._grain_cache))] = self._generate_grain()
+        grain *= rng.uniform(0.7, 1.0)
 
         self._add_to_buffer(grain)
 

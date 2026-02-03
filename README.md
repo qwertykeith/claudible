@@ -56,6 +56,9 @@ claudible --volume 0.3
 
 # List available characters
 claudible --list-characters
+
+# Demo all sound characters
+claudible --demo
 ```
 
 ### 🔇 Reverse Mode
@@ -114,6 +117,7 @@ tail -f /var/log/app.log | claudible --pipe -c droplet
 | `--attention`, `-a` | ⏰ Silence alert seconds (default: 30) |
 | `--reverse`, `-r` | 🔄 Reverse mode: sound during silence, quiet during output |
 | `--list-characters` | 📋 Show presets |
+| `--demo` | 🔊 Play a short demo of each sound character |
 
 ## 🛠️ Development
 
@@ -133,6 +137,9 @@ echo "test" | PYTHONPATH=src python3 -m claudible --pipe -c glass
 
 # List characters
 PYTHONPATH=src python3 -m claudible --list-characters
+
+# Demo all characters
+PYTHONPATH=src python3 -m claudible --demo
 ```
 
 ## 📜 License

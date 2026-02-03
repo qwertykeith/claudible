@@ -1,7 +1,7 @@
 """I/O activity tracking and event detection."""
 
 import time
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 import threading
 
 
@@ -17,7 +17,7 @@ class ActivityMonitor:
 
     def __init__(
         self,
-        on_grain: Callable[[], None],
+        on_grain: Callable[[str], None],
         on_chime: Callable[[], None],
         on_attention: Callable[[], None],
         attention_seconds: float = 30.0,
@@ -68,7 +68,7 @@ class ActivityMonitor:
                     if not self._reverse_playing:
                         self._reverse_playing = True
                         self.on_chime()
-                    self.on_grain()
+                    self.on_grain("")
                     time.sleep(reverse_interval)
                 else:
                     if self._reverse_playing:
@@ -109,11 +109,11 @@ class ActivityMonitor:
                     self._consecutive_newlines = 0
             else:
                 self._consecutive_newlines = 0
-                self._maybe_trigger_grain()
+                self._maybe_trigger_grain(char)
 
-    def _maybe_trigger_grain(self):
+    def _maybe_trigger_grain(self, char: str = ""):
         """Trigger a grain if enough time has passed (throttling)."""
         now = time.time()
         if now - self._last_grain_time >= self._min_grain_interval:
             self._last_grain_time = now
-            self.on_grain()
+            self.on_grain(char)
