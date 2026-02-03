@@ -10,14 +10,18 @@ import time
 from typing import Optional
 
 from .audio import SoundEngine
-from .materials import get_material, get_random_material, list_materials, MATERIALS
+from .materials import (
+    get_material, get_random_material, list_materials, list_sound_sets,
+    get_sound_set, SOUND_SETS, DEFAULT_SOUND_SET,
+)
 from .monitor import ActivityMonitor
 
 
-def run_demo(volume: float):
-    """Play a short demo of every sound character."""
-    print("Claudible character demo\n", file=sys.stderr)
-    for name, mat in MATERIALS.items():
+def run_demo(volume: float, sound_set: str = DEFAULT_SOUND_SET):
+    """Play a short demo of every sound character in a set."""
+    materials = get_sound_set(sound_set)
+    print(f"Claudible character demo [{sound_set}]\n", file=sys.stderr)
+    for name, mat in materials.items():
         print(f"  {name:10} - {mat.description}", file=sys.stderr)
         engine = SoundEngine(material=mat, volume=volume)
         engine.start()
@@ -130,9 +134,14 @@ def main():
         help='Pipe mode: read from stdin instead of wrapping a command',
     )
     parser.add_argument(
+        '--set', '-s',
+        choices=list_sound_sets(),
+        default=DEFAULT_SOUND_SET,
+        help=f'Sound set (default: {DEFAULT_SOUND_SET})',
+    )
+    parser.add_argument(
         '--character', '-c',
-        choices=list_materials(),
-        help='Sound character (default: random)',
+        help='Sound character (default: random). Use --list-characters to see options.',
     )
     parser.add_argument(
         '--volume', '-v',
@@ -164,21 +173,33 @@ def main():
 
     args = parser.parse_args()
 
+    sound_set = args.set
+
     if args.list_characters:
-        print("Available sound characters:\n")
-        for name, mat in MATERIALS.items():
-            print(f"  {name:10} - {mat.description}")
+        for set_name, materials in SOUND_SETS.items():
+            default_tag = " (default)" if set_name == DEFAULT_SOUND_SET else ""
+            print(f"\n  [{set_name}]{default_tag}\n")
+            for name, mat in materials.items():
+                print(f"    {name:10} - {mat.description}")
+        print()
         return
 
     if args.demo:
         volume = max(0.0, min(1.0, args.volume))
-        run_demo(volume)
+        run_demo(volume, sound_set)
         return
 
+    # Validate character against the chosen set
     if args.character:
-        material = get_material(args.character)
+        available = list_materials(sound_set)
+        if args.character not in available:
+            parser.error(
+                f"character '{args.character}' not in set '{sound_set}'. "
+                f"Available: {', '.join(available)}"
+            )
+        material = get_material(args.character, sound_set)
     else:
-        material = get_random_material()
+        material = get_random_material(sound_set)
 
     volume = max(0.0, min(1.0, args.volume))
 

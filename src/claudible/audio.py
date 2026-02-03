@@ -26,6 +26,7 @@ class SoundEngine:
         self._stream: Optional[sd.OutputStream] = None
         self._running = False
         self._hum_phase = 0.0
+        self._last_pitch = 1.0  # portamento tracking
         self._lock = threading.Lock()
 
         # Ring buffer for mixing audio
@@ -142,11 +143,11 @@ class SoundEngine:
     # --- Sound generation ---
 
     def _build_grain_cache(self) -> list:
-        """Build grain cache with voices at full-octave intervals, biased low + high."""
+        """Build grain cache with voices at full-octave intervals, filtered by material range."""
         # Each register is a full octave apart.
         # (octave_shift, noise_mult, decay_mult, duration_mult)
         # Multiple character variations per register.
-        voices = [
+        all_voices = [
             # --- oct -3: sub rumble (3 voices) ---
             (-3, 3.5, 2.5, 1.8),   # sub thump
             (-3, 2.0, 3.0, 2.0),   # sub knock
@@ -181,6 +182,8 @@ class SoundEngine:
             ( 3, 0.3, 0.2, 0.45),  # air tick
             ( 3, 0.05, 0.3, 0.35), # air wisp
         ]
+        oct_min, oct_max = self.material.octave_range
+        voices = [v for v in all_voices if oct_min <= v[0] <= oct_max]
         cache = []
         for octave, noise_m, decay_m, dur_m in voices:
             cache.append(self._generate_grain(
@@ -269,6 +272,16 @@ class SoundEngine:
             h = ((h * 33) ^ ord(c)) & 0xFFFFFFFF
         return h
 
+    # Minor pentatonic scale degrees in semitones (wraps at octave)
+    _SCALE_DEGREES = [0, 3, 5, 7, 10]
+
+    def _snap_to_scale(self, semitones: float) -> float:
+        """Quantise a semitone offset to the nearest scale degree."""
+        octave = int(semitones // 12)
+        remainder = semitones % 12
+        nearest = min(self._SCALE_DEGREES, key=lambda d: abs(d - remainder))
+        return octave * 12 + nearest
+
     def play_grain(self, token: str = ""):
         """Play a grain/sparkle sound, deterministic for a given token."""
         if token:
@@ -280,16 +293,30 @@ class SoundEngine:
         idx = rng.randint(len(self._grain_cache))
         grain = self._grain_cache[idx].copy()
 
-        # Narrow pitch micro-variation (±1.5 semitones) — stays in its register
-        pitch_shift = 2 ** (rng.uniform(-1.5, 1.5) / 12)
-        if abs(pitch_shift - 1.0) > 0.001:
-            new_len = int(len(grain) / pitch_shift)
-            if new_len > 0:
-                grain = np.interp(
-                    np.linspace(0, len(grain) - 1, new_len),
-                    np.arange(len(grain)),
-                    grain,
-                ).astype(np.float32)
+        # Pitch variation snapped to minor pentatonic scale
+        raw_semi = rng.uniform(-1.5, 1.5)
+        snapped_semi = self._snap_to_scale(raw_semi)
+        pitch_shift = 2 ** (snapped_semi / 12)
+
+        # Fast portamento: slide from last pitch to new target
+        prev_pitch = self._last_pitch
+        self._last_pitch = pitch_shift
+
+        n = len(grain)
+        if n > 0 and (abs(pitch_shift - 1.0) > 0.001 or abs(prev_pitch - 1.0) > 0.001):
+            # Glide over first 30% of grain, then hold target
+            glide_len = int(n * 0.3)
+            pitch_env = np.ones(n, dtype=np.float32)
+            if glide_len > 0:
+                pitch_env[:glide_len] = np.linspace(
+                    prev_pitch, pitch_shift, glide_len, dtype=np.float32,
+                )
+            pitch_env[glide_len:] = pitch_shift
+
+            # Time-varying resample using cumulative phase
+            phase = np.cumsum(pitch_env)
+            phase = phase / phase[-1] * (n - 1)
+            grain = np.interp(phase, np.arange(n), grain).astype(np.float32)
 
         grain *= rng.uniform(0.7, 1.0)
 
