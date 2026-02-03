@@ -1,0 +1,54 @@
+name: Publish to PyPI
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    # Skip if the commit was made by this workflow (prevent infinite loop)
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Bump patch version
+        run: |
+          python3 -c "
+          import re, pathlib
+          p = pathlib.Path('pyproject.toml')
+          text = p.read_text()
+          m = re.search(r'version = \"(\d+)\.(\d+)\.(\d+)\"', text)
+          major, minor, patch = int(m.group(1)), int(m.group(2)), int(m.group(3))
+          old = f'{major}.{minor}.{patch}'
+          new = f'{major}.{minor}.{patch + 1}'
+          p.write_text(text.replace(f'version = \"{old}\"', f'version = \"{new}\"'))
+          print(f'Bumped {old} -> {new}')
+          with open('new_version.txt', 'w') as f:
+              f.write(new)
+          "
+
+      - name: Commit version bump
+        run: |
+          VERSION=$(cat new_version.txt)
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add pyproject.toml
+          git commit -m "Bump version to ${VERSION} [skip ci]"
+          git tag "v${VERSION}"
+          git push && git push --tags
+
+      - run: pip install build
+      - run: python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1
