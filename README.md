@@ -2,7 +2,7 @@
 
 *An opus for your terminals.*
 
-Ambient audio soundscape feedback for terminal output.
+Possibly the most annoying Claude utility ever made but here it is anyway. Ambient audio soundscape feedback for terminal output.
 
 ## The Idea
 
@@ -36,17 +36,51 @@ claudible --volume 0.3
 claudible --list-characters
 ```
 
+### Reverse Mode
+
+In reverse mode, claudible is silent while output is flowing and plays ambient sound during silence. Useful when you want to know a task is *waiting* rather than *working*.
+
+```bash
+# Ambient grains play when Claude is idle/waiting for you
+claudible --reverse
+
+# Combine with a character
+claudible --reverse -c shell
+```
+
+## Works With Any CLI
+
+Built for Claude Code, but claudible works with anything that produces terminal output.
+
+```bash
+# Aider
+claudible "aider"
+
+# Watch a dev server
+npm run dev 2>&1 | claudible --pipe
+
+# Monitor logs
+tail -f /var/log/app.log | claudible --pipe -c droplet
+```
+
 ## Sound Characters
 
 | Character | Description |
 |-----------|-------------|
-| `ice` | Brittle, very high, fast decay |
+| `ice` | Brittle, very high, fast decay with pitch drop |
 | `glass` | Classic wine glass ping |
-| `crystal` | Pure with beating from close partials |
-| `ceramic` | Duller, muted |
-| `bell` | Metallic, longer ring |
-| `droplet` | Pitch bend down, liquid |
-| `click` | Sharp mechanical click |
+| `crystal` | Pure lead crystal with beating from close partial pairs |
+| `ceramic` | Duller muted earthenware tap |
+| `bell` | Small metallic bell, classic ratios, long ring |
+| `droplet` | Water droplet, pitch bend down, liquid |
+| `click` | Sharp mechanical click, keyboard-like |
+| `wood` | Hollow wooden tap, warm marimba-like resonance |
+| `stone` | Dense slate tap, heavy and earthy |
+| `bamboo` | Hollow tube resonance, odd harmonics, breathy and airy |
+| `ember` | Warm crackling ember, fire-like with wide pitch scatter |
+| `silk` | Soft breathy whisper, delicate airy texture |
+| `shell` | Swirly ocean interference, dense phase beating |
+| `moss` | Ultra-soft muffled earth, mossy dampness |
 
 ## Options
 
@@ -56,6 +90,7 @@ claudible --list-characters
 | `--character`, `-c` | Sound character |
 | `--volume`, `-v` | Volume 0.0-1.0 (default: 0.5) |
 | `--attention`, `-a` | Silence alert seconds (default: 30) |
+| `--reverse`, `-r` | Reverse mode: sound during silence, quiet during output |
 | `--list-characters` | Show presets |
 
 ## Development

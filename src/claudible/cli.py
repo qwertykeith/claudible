@@ -129,6 +129,11 @@ def main():
         help='Seconds of silence before attention signal (default: 30)',
     )
     parser.add_argument(
+        '--reverse', '-r',
+        action='store_true',
+        help='Reverse mode: sound plays during silence, not during output',
+    )
+    parser.add_argument(
         '--list-characters',
         action='store_true',
         help='List available sound characters',
@@ -155,9 +160,11 @@ def main():
         on_chime=engine.play_chime,
         on_attention=engine.play_attention,
         attention_seconds=args.attention,
+        reverse=args.reverse,
     )
 
-    print(f"[claudible] {material.name} - {material.description}", file=sys.stderr)
+    mode_label = " (reverse)" if args.reverse else ""
+    print(f"[claudible] {material.name}{mode_label} - {material.description}", file=sys.stderr)
 
     if args.pipe:
         run_pipe_mode(engine, monitor)
