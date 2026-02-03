@@ -17,11 +17,11 @@
 
 Possibly the most annoying Claude utility ever made but here it is anyway.
 
-Ambient audio soundscape feedback for terminal output. It really shines when used with a lot of busy busy Claude Code terminals running at the same time.
+Ambient audio soundscape feedback for terminal output. It really shines when used with a lot of busy Claude Code terminals running at the same time.
 
 ## 🎼 The Idea
 
-Imagine you are working in a factory. Each Claude Code session is a machine that must be attended to. When it's working, you hear it — crystalline sparkles as text flows, soft chimes when tasks complete. When it goes quiet, you know something needs your attention.
+Imagine you are working in a factory. Each Claude Code session is a machine that must be attended to. When it's working, you hear it — crystalline sparkles as text flows, soft chimes when tasks complete. When everything goes quiet, you know something needs your attention.
 
 ## 🎶 Installation
 
