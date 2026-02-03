@@ -17,7 +17,7 @@
 
 Possibly the most annoying Claude utility ever made but here it is anyway.
 
-Ambient audio soundscape feedback for terminal output. It really shines with a lot of busy busy Claude Code terminals running at the same time.
+Ambient audio soundscape feedback for terminal output. It really shines when used with a lot of busy busy Claude Code terminals running at the same time.
 
 ## 🎼 The Idea
 
