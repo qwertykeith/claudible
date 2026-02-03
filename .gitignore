@@ -25,3 +25,9 @@ Thumbs.db
 
 # Firebase
 firebase-debug.log
+
+# Claude Code local config
+.claude/
+
+# AI prompt
+PROMPT.md
