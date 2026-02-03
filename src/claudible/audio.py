@@ -195,7 +195,7 @@ class SoundEngine:
                         decay_mult: float = 1.0, duration_mult: float = 1.0) -> np.ndarray:
         """Generate a single grain sound from the material's physical model."""
         m = self.material
-        duration = m.grain_duration * duration_mult * np.random.uniform(0.85, 1.15)
+        duration = m.grain_duration * duration_mult * 0.5 * np.random.uniform(0.85, 1.15)
         n = int(duration * self.SAMPLE_RATE)
         t = np.linspace(0, duration, n, dtype=np.float32)
 
@@ -245,13 +245,21 @@ class SoundEngine:
         # Reverb — less for percussive lows (tighter), more for highs
         reverb_amt = m.reverb_amount * (0.6 if octave_shift < -0.5 else 1.0 + max(octave_shift, 0) * 0.2)
         grain = self._apply_reverb(grain, reverb_amt, m.room_size, m.reverb_damping)
-        grain = grain[:n]
 
-        peak = np.max(np.abs(grain))
+        # Small pre-delay + extra tail reverb
+        delay_ms = 15
+        delay_samples = int(delay_ms * self.SAMPLE_RATE / 1000)
+        tail_len = n + delay_samples + int(0.08 * self.SAMPLE_RATE)
+        out = np.zeros(tail_len, dtype=np.float32)
+        out[delay_samples:delay_samples + len(grain)] = grain
+        # Light tail reverb on top
+        out = self._apply_reverb(out, 0.15, room_size=1.2, damping=0.4)
+
+        peak = np.max(np.abs(out))
         if peak > 0:
-            grain = grain / peak * 0.4 * m.volume
+            out = out / peak * 0.4 * m.volume
 
-        return grain.astype(np.float32)
+        return out.astype(np.float32)
 
     @staticmethod
     def _token_hash(token: str) -> int:
