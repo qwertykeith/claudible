@@ -2,8 +2,6 @@
 
 import argparse
 import os
-import pty
-import select
 import subprocess
 import sys
 import time
@@ -60,9 +58,11 @@ def run_pipe_mode(engine: SoundEngine, monitor: ActivityMonitor):
 
 def run_wrap_mode(command: str, engine: SoundEngine, monitor: ActivityMonitor):
     """Run in wrap mode, spawning a PTY for the command."""
+    import pty
+    import select
     import shlex
-    import tty
     import termios
+    import tty
 
     engine.start()
     monitor.start()

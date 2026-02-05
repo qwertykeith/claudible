@@ -1,7 +1,32 @@
 """Sound engine for procedural audio generation."""
 
+import platform
+import sys
+
 import numpy as np
-import sounddevice as sd
+
+try:
+    import sounddevice as sd
+except (OSError, ImportError) as e:
+    _plat = platform.system()
+    msg = (
+        "claudible: failed to import sounddevice — PortAudio library not found.\n\n"
+    )
+    if _plat == "Linux":
+        msg += (
+            "  Install PortAudio for your distro:\n"
+            "    Debian/Ubuntu:  sudo apt install libportaudio2\n"
+            "    Fedora/RHEL:    sudo dnf install portaudio\n"
+        )
+    else:
+        msg += "  Install PortAudio (https://www.portaudio.com/) for your platform.\n"
+    msg += (
+        "\n  Note: 'pip install sounddevice' bundles PortAudio on most platforms.\n"
+        "  This error typically only occurs on ARM Linux or source builds.\n"
+    )
+    print(msg, file=sys.stderr)
+    raise SystemExit(1) from e
+
 from typing import Optional
 import threading
 

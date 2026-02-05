@@ -38,6 +38,8 @@ pip install claudible
 
 > **`claudible` command not found?** If you used `pip install --user`, the script directory may not be on your PATH. Use `python3 -m claudible` instead, or switch to `pipx`.
 
+> **Prerequisites:** Most platforms need no extra dependencies — `pip install` bundles everything. On **Linux ARM / source builds**, you may need PortAudio: `sudo apt install libportaudio2` (Debian/Ubuntu) or `sudo dnf install portaudio` (Fedora). **Windows** users should use WSL, as wrap mode requires a PTY.
+
 ## 🎹 Usage
 
 ```bash
